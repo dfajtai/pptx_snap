@@ -89,7 +89,9 @@ class Grid:
         assert isinstance(grid_1,Grid)
         assert isinstance(grid_2,Grid)
         
-        return grid_1.copy().extend(grid_2)
+        merged_grid = grid_1.copy()
+        merged_grid.extend(grid_2)
+        return merged_grid
     
     def __str__(self) -> str:
         return (f"Grid with x depth {self.x_depth}, y depth {self.y_depth}:\n"

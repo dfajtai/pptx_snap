@@ -32,7 +32,7 @@ class SnappableObject:
         # Calculate center point and corner points
         self.center = (self.left + self.width // 2, self.top + self.height // 2)
         
-        self.snapping_candidates = None
+        self.snapping_candidates = []
 
 
 
