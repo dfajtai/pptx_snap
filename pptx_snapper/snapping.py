@@ -1,19 +1,29 @@
+import os.path
 from abc import abstractmethod
-from typing import Optional
+from typing import Optional, Any
 import numpy as np
 
+
+from .pptx_reader import PPTXReader
 from .grid import Grid
 from .snappable_object import SnappableObject
 from .slide import Slide
+from .object_recognizer import ObjectTemplates
+
 
 class SnapCandidate:
-    def __init__(self, object: SnappableObject, anchor_name: str, snap_type:str, grid_type:str, snap_x_position: Optional[int] = None, snap_y_position: Optional[int] = None):
-        self.object = object
+    """
+    Class to store relevant information on 'SnapCandidates'
+    A SnapCandidate is a virtual, grid-sanpped position of an objects anchor point
+    """
+
+    def __init__(self, snappable_object: SnappableObject, anchor_name: str, snap_type:str, grid_type:str, snap_x_position: Optional[int] = None, snap_y_position: Optional[int] = None):
+        self.snappable_object = snappable_object
         self.anchor_name = anchor_name      # Name of the anchor point (e.g., "top-left")
         self.snap_type = snap_type
         self.grid_type = grid_type
         
-        self.anchor_position = object.get_anchor_point(anchor_name)
+        self.anchor_position = snappable_object.get_anchor_point(anchor_name)
         
         x = snap_x_position if not isinstance(snap_x_position,type(None)) else self.anchor_position[0]
         y = snap_y_position if not isinstance(snap_y_position,type(None)) else self.anchor_position[1]
@@ -25,15 +35,24 @@ class SnapCandidate:
                 f"snapped to {self.snap_position}")
         
     @property
-    def displacement_vector(self):
+    def displacement_vector(self)-> np.ndarray:
         return np.array(self.snap_position) - np.array(self.anchor_position)
-    
+
     @property
-    def displacement(self):
-        return np.linalg.norm(self.displacement_vector)
-    
+    def relative_displacement_vector(self) -> np.ndarray:
+        return  np.abs(self.displacement_vector)/np.array(self.snappable_object.sizes)
+
+    @property
+    def displacement(self)-> float:
+        return float(np.linalg.norm(self.displacement_vector))
+
+
 
 class Snapping:
+    """
+    Base class to calculate SnapCandidates
+    """
+
     def __init__(self, grid: Grid) -> None:
         self.grid = grid
         
@@ -43,6 +62,10 @@ class Snapping:
 
 
 class XSnapping(Snapping):
+    """
+    Class to calculate SnapCandidates on X axis
+    """
+
     def __init__(self, grid: Grid):
         super().__init__(grid)
         self.snap_type = "x"
@@ -50,6 +73,8 @@ class XSnapping(Snapping):
     def snap(self, obj: SnappableObject, grid_type:str):
         """Apply x-axis snapping to the object."""
         for anchor_name in obj.anchor_points.keys():
+            if len(self.grid.x_grid_lines)==0:
+                break
             closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_name)[0]))
             obj.snapping_candidates.append(SnapCandidate(obj, anchor_name, snap_x_position=closest_x,
                                                          snap_type = self.snap_type,
@@ -57,6 +82,10 @@ class XSnapping(Snapping):
 
 
 class YSnapping(Snapping):
+    """
+    Class to calculate SnapCandidates on Y axis
+    """
+
     def __init__(self, grid: Grid) -> None:
         super().__init__(grid)
         self.snap_type = "y"
@@ -64,6 +93,8 @@ class YSnapping(Snapping):
     def snap(self, obj: SnappableObject, grid_type:str) -> None:
         """Apply y-axis snapping to the object."""
         for anchor_name in obj.anchor_points.keys():
+            if len(self.grid.y_grid_lines)==0:
+                break
             closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_name)[1]))
             obj.snapping_candidates.append(SnapCandidate(obj, anchor_name, snap_y_position=closest_y,
                                                          snap_type = self.snap_type,
@@ -71,6 +102,10 @@ class YSnapping(Snapping):
 
 
 class JointSnapping(Snapping):
+    """
+    Class to calculate SnapCandidates on X and Y axes
+    """
+
     def __init__(self, grid: Grid) -> None:
         super().__init__(grid)
         self.snap_type = "joint"
@@ -78,14 +113,26 @@ class JointSnapping(Snapping):
     def snap(self, obj: SnappableObject, grid_type:str) -> None:
         """Apply simultaneous x and y snapping to the object."""
         for anchor_name in obj.anchor_points.keys():
-            closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_name)[0]))
-            closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_name)[1]))
+            if len(self.grid.x_grid_lines) != 0:
+                closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_name)[0]))
+            else:
+                closest_x = obj.get_anchor_point(anchor_name)[0]
+
+            if len(self.grid.y_grid_lines) != 0:
+                closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_name)[1]))
+            else:
+                closest_y = obj.get_anchor_point(anchor_name)[1]
+
             obj.snapping_candidates.append(SnapCandidate(obj, anchor_name, snap_x_position=closest_x, snap_y_position=closest_y,
                                                          snap_type = self.snap_type,
                                                          grid_type=grid_type))
         
         
-class SnappingManager:
+class SnappingSearch:
+    """
+    Class implement methods to calculate various SnappingCandidates for SnappableObjects
+    """
+
     def __init__(self, allow_x_snap = True, allow_y_snap = True):  
 
         self.allow_x_snap = allow_x_snap
@@ -165,4 +212,68 @@ class SnappingManager:
                     
                 strategy.snap(obj,grid_type=grid_type)
     
-    
+
+class SnappingManager:
+    """
+    Class to search and manifest the best snap candidate for a SnappableObject
+    """
+
+    def __init__(self,
+                 reader: PPTXReader,
+                 x_limit:Optional[int] = None,
+                 y_limit:Optional[int] = None,
+                 x_relative_limit: Optional[float] = None,
+                 y_relative_limit: Optional[float] = None)->None:
+
+        self.reader = reader
+        self.fix_limit = np.array([x_limit,y_limit])
+        self.rel_limit = np.array([x_relative_limit,y_relative_limit])
+
+
+    def _validate_displacement(self, displacement_vector:np.ndarray) -> bool:
+        if np.all(self.fix_limit == None): return True
+
+        invalid_indices = np.isnan(self.fix_limit)
+        return np.all(np.less_equal(displacement_vector[~invalid_indices],self.fix_limit[~invalid_indices]))
+
+    def _validate_relative_displacement(self, rel_displacement_vector:np.ndarray) -> bool:
+        if np.all(self.rel_limit == None): return True
+
+        invalid_indices = np.isnan(self.rel_limit)
+        return np.all(np.less_equal(rel_displacement_vector[~invalid_indices],self.rel_limit[~invalid_indices]))
+
+    def apply_snaps(self):
+        for slide_index, slide in enumerate(self.reader.slides):
+            for so in slide.snappable_objects:
+                valid_candidates = []
+                for sc in so.snapping_candidates:
+                    if not isinstance(sc,SnapCandidate):
+                        continue
+
+                    if not self._validate_displacement(sc.displacement_vector):
+                        continue
+
+                    if not self._validate_relative_displacement(sc.relative_displacement_vector):
+                        continue
+
+                    valid_candidates.append(sc)
+
+                valid_candidates.sort(key=lambda x: x.displacement)
+
+                if len(valid_candidates)==0:
+                    continue
+
+                best_candidate = valid_candidates[0]
+
+                print(best_candidate)
+
+                self.reader.presentation.slides[so.slide_index].shapes[so.shape_index].left +=best_candidate.displacement_vector[0]
+                self.reader.presentation.slides[so.slide_index].shapes[so.shape_index].top +=best_candidate.displacement_vector[1]
+
+
+
+    def save_at(self, out_path):
+        if not os.path.exists(os.path.basename(out_path)):
+            os.mkdir(os.path.basename(out_path))
+
+        self.reader.presentation.save(out_path)

@@ -16,10 +16,10 @@ class Slide:
     def extract_snappable_objects(self) -> list[SnappableObject]:
         """Extract snappable objects from the slide."""
         snappable_objects = []
-        for shape in self.slide.shapes:
+        for shape_index, shape in enumerate(self.slide.shapes):
             # Add only visible snappable objects (exclude connectors, invisible shapes, etc.)
             # if not shape.has_text_frame and not shape.is_placeholder:
-            snappable_objects.append(SnappableObject(shape, self.slide_index))
+            snappable_objects.append(SnappableObject(shape = shape, slide_index = self.slide_index, shape_index=shape_index))
         return snappable_objects
     
     def __str__(self) -> str:

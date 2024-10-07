@@ -31,7 +31,7 @@ class Grid:
         self.recursively_add_grid_lines(grid_lines, midpoint, end, depth - 1)
 
 
-    def snap_to_grid(self, x, y) -> tuple[int,int]:
+    def snap_to_grid(self, x, y) -> tuple[int,...]:
         """Snap the given x, y coordinates to the nearest grid points."""
         nearest_x = self.find_nearest(self.x_grid_lines, x)
         nearest_y = self.find_nearest(self.y_grid_lines, y)
@@ -84,8 +84,8 @@ class Grid:
         
         return new_grid
     
-    @classmethod
-    def merge_grids(cls, grid_1, grid_2):
+    @staticmethod
+    def merge_grids(grid_1, grid_2):
         assert isinstance(grid_1,Grid)
         assert isinstance(grid_2,Grid)
         

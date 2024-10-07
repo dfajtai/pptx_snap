@@ -27,6 +27,11 @@ class KMeansGrid(Grid):
         # Get the positions of all snappable objects in the slide
         positions = np.array([obj.get_anchor_point(anchor_name=anchor_name) for obj in self.slide.snappable_objects])
 
+        # skip if there is only one element...
+        if positions.shape[1] == 1:
+            return
+
+
         if axis == 'x':
             data = positions[:, 0].reshape(-1, 1)  # Only use x-axis data
         elif axis == 'y':
@@ -37,11 +42,13 @@ class KMeansGrid(Grid):
         # If n_clusters is not provided, set it to a reasonable value based on object count
         if n_clusters is None:
             n_clusters = min(len(self.slide.snappable_objects) // 3, 10)
+        if n_clusters == 0:
+            return
 
         # Perform K-means clustering
         kmeans = KMeans(n_clusters=n_clusters)
         kmeans.fit(data)
-        cluster_centers = np.sort(kmeans.cluster_centers_.flatten())
+        cluster_centers = np.sort(kmeans.cluster_centers_.flatten()).astype("int")
         
         
         # Create grid lines from the cluster centers
