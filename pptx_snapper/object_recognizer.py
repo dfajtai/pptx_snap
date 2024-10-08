@@ -2,6 +2,7 @@ from copy import  deepcopy
 from collections import OrderedDict
 
 import numpy as np
+import pandas as pd
 
 from .snappable_object import SnappableObject
 from .slide import Slide
@@ -16,6 +17,8 @@ class SnappableTemplate():
         self._template_object = None
         self.instances = []
 
+        self.validate_functions = [self.validate_sizes, self.validate_shape_type]
+
     @property
     def template_object(self):
         return self._template_object
@@ -24,11 +27,13 @@ class SnappableTemplate():
     def template_object(self, value:SnappableObject):
         self._template_object = value
 
-    def _validate_shape_type(self,shape_type:str) -> bool:
-        return shape_type == self.shape_type
+    def validate_shape_type(self,obj: SnappableObject) -> bool:
+        return obj.shape_type == self.shape_type
 
-    def _validate_sizes(self,sizes:np.ndarray) -> bool:
-        return np.array_equiv(sizes,self.sizes)
+    def validate_sizes(self,obj: SnappableObject, tolerance: float = 0.01) -> bool:
+        if not np.allclose(self.sizes.shape,obj.sizes.shape): return False
+        fraction = np.true_divide(obj.sizes,self.sizes)
+        return np.allclose(fraction,np.ones_like(fraction),atol=tolerance)
 
     def add_instance(self, obj: SnappableObject, flush = False) -> None:
         if flush:
@@ -37,7 +42,7 @@ class SnappableTemplate():
         if not isinstance(obj,SnappableObject):
             return
 
-        if not (self._validate_sizes(obj.sizes) and self._validate_shape_type(obj.shape_type)):
+        if not all([lambda v:v(obj) for v in self.validate_functions if callable(v)]):
             return
 
         self.instances.append(obj)
@@ -69,9 +74,32 @@ class ObjectTemplates:
         ObjectTemplates.templates[template.template_id] = template
         return template
 
+
 class ObjectRecognizer:
     """
     Class implementing methods to automatically recognize repeated objects
     """
-    pass
 
+    @staticmethod
+    def search_template_objects(slide_list: list[Slide]):
+        objects = []
+        for s in slide_list:
+            objects.extend(s.snappable_objects)
+
+
+        df = pd.DataFrame([OrderedDict(slide_index = o.slide_index,
+                                       shape_index = o.shape_index,
+                                       shape_type = o.shape_type,
+                                       width = o.width,
+                                       height = o.height,
+
+                                       is_assigned_to_template = False,
+                                       object = o) for o in objects])
+
+
+        # shape type needs to be exact same
+        types = df["shape_type"].unique().tolist()
+        for shape_type in types:
+            _df = df[df["shape_type"] == shape_type]
+
+            print(_df)

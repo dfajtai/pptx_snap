@@ -5,6 +5,8 @@ import numpy as np
 from collections import OrderedDict
 
 from numpy.ma.core import shape
+
+from pptx.util import Length
 from pptx.shapes.base import BaseShape
 from pptx.shapes.picture import Picture
 from pptx.shapes.group import GroupShape
@@ -48,32 +50,32 @@ class SnappableObject:
 
     @property
     def sizes(self) -> np.ndarray:
-        return np.array([max(self.width,1), max(self.height,1)])
+        return np.array([Length(max(self.width,1)), Length(max(self.height,1))])
 
     @property
-    def center(self)->tuple[int,...]:
-        return self.left + self.width // 2, self.top + self.height // 2
+    def center(self)->tuple[Length,...]:
+        return Length(self.left + self.width // 2), Length(self.top + self.height // 2)
 
     @property
     def right(self):
-        return self.left + self.width
+        return Length(self.left + self.width)
 
     @property
     def bottom(self):
-        return self.top + self.height
+        return Length(self.top + self.height)
 
     @property
-    def corners(self)-> list[tuple[int,...]]:
+    def corners(self)-> list[tuple[Length,...]]:
         """Calculate the corner points of the object."""
         return [
             (self.left, self.top),  # Top-left
-            (self.left + self.width, self.top),  # Top-right
-            (self.left, self.top + self.height),  # Bottom-left
-            (self.left + self.width, self.top + self.height),  # Bottom-right
+            (self.right, self.top),  # Top-right
+            (self.left, self.bottom),  # Bottom-left
+            (self.right, self.bottom),  # Bottom-right
         ]
 
     @property
-    def anchor_points(self)->dict[str,tuple[int,...]]:
+    def anchor_points(self)->dict[str,tuple[Length,...]]:
         corners = self.corners
         
         return OrderedDict({
@@ -84,38 +86,38 @@ class SnappableObject:
             "center": self.center,
         })
         
-    def get_anchor_point(self, anchor_name: str) -> tuple[int, int]:
+    def get_anchor_point(self, anchor_name: str) -> tuple[Length, ...]:
         """Get the position of a named anchor point."""
         return self.anchor_points.get(anchor_name, (None, None))
     
     
     @property
-    def area(self):
-        return self.width * self.height
+    def area(self) -> int:
+        return int(self.width * self.height)
     
     @property
-    def orig_top(self) -> int:
-        return self._top
+    def orig_top(self) -> Length:
+        return Length(self._top)
 
     @property
-    def orig_left(self) -> int:
-        return self._left
+    def orig_left(self) -> Length:
+        return Length(self._left)
 
     @property
-    def orig_right(self) -> int:
-        return self._left + self._width
+    def orig_right(self) -> Length:
+        return Length(self._left + self._width)
 
     @property
-    def orig_bottom(self) -> int:
-        return self._top + self._height
+    def orig_bottom(self) -> Length:
+        return Length(self._top + self._height)
 
     @property
-    def orig_width(self) -> int:
-        return self._width
+    def orig_width(self) -> Length:
+        return Length(self._width)
 
     @property
-    def orig_height(self) -> int:
-        return self._height
+    def orig_height(self) -> Length:
+        return Length(self._height)
     
     @property
     def shape_type(self) -> str:
@@ -152,7 +154,7 @@ class SnappableObject:
     def size_match_score(self, other: 'SnappableObject') -> float:
         width_diff = abs(self.width - other.width)
         height_diff = abs(self.height - other.height)
-        score = 1 - (width_diff / max(self.width, other.width)) * (height_diff / max(self.height, other.height))
+        score = 1.0 - (width_diff / max(self.width, other.width)) * (height_diff / max(self.height, other.height))
         return max(0, min(1, score))  # Clamp between 0 and 1
     
     

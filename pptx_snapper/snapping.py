@@ -3,6 +3,7 @@ from abc import abstractmethod
 from typing import Optional, Any
 import numpy as np
 
+from pptx.util import Length, Cm, Mm
 
 from .pptx_reader import PPTXReader
 from .grid import Grid
@@ -220,13 +221,13 @@ class SnappingManager:
 
     def __init__(self,
                  reader: PPTXReader,
-                 x_limit:Optional[int] = None,
-                 y_limit:Optional[int] = None,
+                 x_limit:Optional[Length] = None,
+                 y_limit:Optional[Length] = None,
                  x_relative_limit: Optional[float] = None,
                  y_relative_limit: Optional[float] = None)->None:
 
         self.reader = reader
-        self.fix_limit = np.array([x_limit,y_limit])
+        self.fix_limit = np.array([l.emu if isinstance(l,Length) else l for l in [x_limit,y_limit] ])
         self.rel_limit = np.array([x_relative_limit,y_relative_limit])
 
 
