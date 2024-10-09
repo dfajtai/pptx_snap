@@ -2,17 +2,30 @@ from copy import deepcopy
 from typing import Any
 import numpy as np
 
+import weakref
+
 from collections import OrderedDict
 
-from numpy.ma.core import shape
 
 from pptx.util import Length
 from pptx.shapes.base import BaseShape
 from pptx.shapes.picture import Picture
 from pptx.shapes.group import GroupShape
 
+from .utils import AnchorPoint, classproperty
+
 
 class SnappableObject:
+
+    _default_active_anchor_points = [AnchorPoint.TOP_LEFT,
+                                    AnchorPoint.TOP_RIGHT,
+                                    AnchorPoint.BOTTOM_LEFT,
+                                    AnchorPoint.BOTTOM_RIGHT,
+                                    AnchorPoint.CENTER]
+
+    catalog = weakref.WeakSet()
+    template_catalog = weakref.WeakSet()
+
     def __init__(self, shape: BaseShape, slide_index: int, shape_index: int, is_template:bool = False):
         self.shape = shape
         self.slide_index = slide_index
@@ -45,8 +58,17 @@ class SnappableObject:
 
         self._template_snap_id = None  # Initially None, will be set later
 
+        self._active_anchor_points = None
         self.snapping_candidates = []
 
+        if is_template:
+            self.__class__.template_catalog.add(self)
+        else:
+            self.__class__.catalog.add(self)
+
+    @property
+    def full_id(self) -> str:
+        return f"{self.shape_id}#{self.shape_index}@{self.slide_index}"
 
     @property
     def sizes(self) -> np.ndarray:
@@ -75,22 +97,64 @@ class SnappableObject:
         ]
 
     @property
-    def anchor_points(self)->dict[str,tuple[Length,...]]:
+    def anchor_points(self)->dict[AnchorPoint,tuple[Length,...]]:
         corners = self.corners
         
         return OrderedDict({
-            "top-left":corners[0],
-            "top-right": corners[1],
-            "bottom-left": corners[2],
-            "bottom-right": corners[3],
-            "center": self.center,
+            AnchorPoint.TOP_LEFT:corners[0],
+            AnchorPoint.TOP_RIGHT: corners[1],
+            AnchorPoint.BOTTOM_LEFT: corners[2],
+            AnchorPoint.BOTTOM_RIGHT: corners[3],
+            AnchorPoint.CENTER: self.center,
         })
-        
-    def get_anchor_point(self, anchor_name: str) -> tuple[Length, ...]:
+
+
+    def get_anchor_point(self, anchor_point: AnchorPoint) -> tuple[Length, ...]:
         """Get the position of a named anchor point."""
-        return self.anchor_points.get(anchor_name, (None, None))
-    
-    
+        return self.anchor_points.get(anchor_point, (None, None))
+
+    def get_anchor_point_by_name(self, anchor_point_name: str) -> tuple[Length, ...]:
+        """Get the position of a named anchor point."""
+        anchor_point = AnchorPoint.__getitem__(anchor_point_name)
+        return self.get_anchor_point(anchor_point)
+
+    @property
+    def active_anchor_points(self)-> list[AnchorPoint]:
+        if self._active_anchor_points:
+            return self._active_anchor_points
+        return SnappableObject._default_active_anchor_points
+
+    @active_anchor_points.setter
+    def active_anchor_points(self, new_anchor_points: list[AnchorPoint]) -> None:
+        self._active_anchor_points = new_anchor_points[:]
+
+    @classproperty
+    def default_active_anchor_points(cls) -> list[AnchorPoint]:
+        return cls._default_active_anchor_points
+
+    @default_active_anchor_points.setter
+    def default_active_anchor_points(cls,new_anchor_points: list[AnchorPoint]) -> None:
+        cls._default_active_anchor_points = new_anchor_points[:]
+
+    @classmethod
+    def update_default_anchor_points(cls,new_anchor_points: list[AnchorPoint] | None = None, propagate = False) -> None:
+        """
+        Sets/updates the default anchor points for the class or its instances
+        :param new_anchor_points:
+        :param propagate: propagate the change to initialized instance variables ot not
+        :return: nothing at all
+        """
+
+        if new_anchor_points:
+            SnappableObject._default_active_anchor_points = new_anchor_points[:]
+
+        if propagate:
+            for obj in cls.__subclasses__():
+                for instance in obj.__dict__.values():
+                    if isinstance(instance, SnappableObject):
+                        instance._active_anchor_points = None
+
+
     @property
     def area(self) -> int:
         return int(self.width * self.height)

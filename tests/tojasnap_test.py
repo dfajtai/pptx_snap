@@ -6,10 +6,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 from pptx_snapper.pptx_reader import PPTXReader
+from pptx_snapper.snappable_object import SnappableObject
 from pptx_snapper.kmeans_grid import KMeansGrid
 from pptx_snapper.grid import Grid
 from pptx_snapper.snapping import SnappingSearch, SnappingManager
-from pptx_snapper.object_recognizer import ObjectRecognizer, ObjectTemplates
+from pptx_snapper.object_recognizer import ObjectRecognizer
+from pptx_snapper.templates import ObjectTemplates
+from pptx_snapper.utils import AnchorPoint
 
 def test_1():
     # Load and read the PowerPoint file
@@ -25,13 +28,14 @@ def test_1():
     basic_snapping = SnappingSearch()
     basic_snapping.set_joint_grid(basic_grid)
 
+    SnappableObject.active_anchor_points = [AnchorPoint.CENTER]
 
     # Iterate over slides and snappable objects
     for slide_index, slide in enumerate(pptx_reader.slides):
         print(slide)
 
         kmeans_grid = KMeansGrid(slide)
-        kmeans_grid.calculate_kmeans_grid(anchor_name="top-left",axis='y')
+        kmeans_grid.calculate_kmeans_grid(anchor_point=AnchorPoint.TOP_LEFT,axis='y')
         
         kmeans_snapping = SnappingSearch()
         kmeans_snapping.set_joint_grid(kmeans_grid)
@@ -53,9 +57,10 @@ def test_2():
     # Load and read the PowerPoint file
     pptx_reader = PPTXReader('../examples/KepalkotasTojasnap2024_v241002.pptx')
 
-    ObjectRecognizer.search_template_objects(pptx_reader.slides)
+    recognizer = ObjectRecognizer.get_size_with_dice_recognizer(1.0,0.8)
+    ObjectTemplates.search_templates(SnappableObject.catalog,recognizer)
 
 
 if __name__ == "__main__":
-    test_1()
-    # test_2()
+    # test_1()
+    test_2()

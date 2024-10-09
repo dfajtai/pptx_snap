@@ -1,78 +1,8 @@
-from copy import  deepcopy
-from collections import OrderedDict
-
-import numpy as np
-import pandas as pd
+from collections.abc import Iterable
+from typing import Callable, List
+import inspect
 
 from .snappable_object import SnappableObject
-from .slide import Slide
-
-
-class SnappableTemplate():
-    def __init__(self, shape_type:str, sizes:np.ndarray, template_id:str):
-        self.shape_type = shape_type
-        self.sizes = sizes
-        self.template_id = template_id
-
-        self._template_object = None
-        self.instances = []
-
-        self.validate_functions = [self.validate_sizes, self.validate_shape_type]
-
-    @property
-    def template_object(self):
-        return self._template_object
-
-    @template_object.setter
-    def template_object(self, value:SnappableObject):
-        self._template_object = value
-
-    def validate_shape_type(self,obj: SnappableObject) -> bool:
-        return obj.shape_type == self.shape_type
-
-    def validate_sizes(self,obj: SnappableObject, tolerance: float = 0.01) -> bool:
-        if not np.allclose(self.sizes.shape,obj.sizes.shape): return False
-        fraction = np.true_divide(obj.sizes,self.sizes)
-        return np.allclose(fraction,np.ones_like(fraction),atol=tolerance)
-
-    def add_instance(self, obj: SnappableObject, flush = False) -> None:
-        if flush:
-            self.instances.clear()
-
-        if not isinstance(obj,SnappableObject):
-            return
-
-        if not all([lambda v:v(obj) for v in self.validate_functions if callable(v)]):
-            return
-
-        self.instances.append(obj)
-        obj.template_snap_id = self.template_id
-
-    def get_mean_object(self) -> None| SnappableObject:
-        """
-        Returns a template a 'dummy' SnappableObject
-        """
-        if len(self.instances) == 0:
-            return
-        sample_shape = deepcopy(self.instances[0].shape)
-
-        x = np.mean([i.top for i in self.instances]).astype(int)
-        y = np.mean([i.left for i in self.instances]).astype(int)
-
-        template_object = SnappableObject(shape = sample_shape, slide_index = -1,shape_index =-1, is_template=True)
-        template_object.left = x
-        template_object.top = y
-
-        self.template_object = template_object
-
-class ObjectTemplates:
-    templates = OrderedDict()
-
-    @staticmethod
-    def add_new_template(shape_type:str, sizes:np.ndarray):
-        template = SnappableTemplate(shape_type=shape_type, sizes=sizes, template_id=f"template_{len(ObjectTemplates.templates)}")
-        ObjectTemplates.templates[template.template_id] = template
-        return template
 
 
 class ObjectRecognizer:
@@ -80,26 +10,107 @@ class ObjectRecognizer:
     Class implementing methods to automatically recognize repeated objects
     """
 
+    def __init__(self):
+        self.match_validate_functions: List[Callable[[SnappableObject,SnappableObject], bool]] = []
+
+    def add_validator(self, validator: Callable[[SnappableObject, SnappableObject], bool]):
+        """
+        Add a validation function to the list if it matches the required signature.
+        Raises a TypeError if the validator does not match the expected signature.
+        """
+        if not callable(validator):
+            raise TypeError("Validator must be callable")
+
+        # Use inspect to check that the function has exactly one parameter of the correct type
+        sig = inspect.signature(validator)
+        parameters = list(sig.parameters.values())
+
+        if len(parameters) != 2:
+            raise TypeError("Validator must take exactly two parameter")
+
+        # Check that both parameters have the expected annotation of 'SnappableObject'
+        for param in parameters:
+            if param.annotation is not SnappableObject:
+                raise TypeError("Both validator parameters must be of type 'SnappableObject'")
+
+        # Add the validator to the list if it passes all checks
+        self.match_validate_functions.append(validator)
+
+    def validate(self, ref_obj: SnappableObject, target_obj: SnappableObject) -> List[bool]:
+        """
+        Run all validators on a given pair of reference and target SnappableObject and return a list of boolean results.
+        """
+        return [validator(ref_obj,target_obj) for validator in self.match_validate_functions]
+
+
+    def search_similar_objects(self, ref_object: SnappableObject, target_objects: Iterable[SnappableObject]) -> List[SnappableObject]:
+        return [o for o in target_objects if all(self.validate(ref_object,o))]
+
+
     @staticmethod
-    def search_template_objects(slide_list: list[Slide]):
-        objects = []
-        for s in slide_list:
-            objects.extend(s.snappable_objects)
+    def get_size_recognizer(size_threshold: float = 1.0) -> 'ObjectRecognizer':
+        recognizer = ObjectRecognizer()
 
+        def exact_size_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.size_match_score(target) >= size_threshold
 
-        df = pd.DataFrame([OrderedDict(slide_index = o.slide_index,
-                                       shape_index = o.shape_index,
-                                       shape_type = o.shape_type,
-                                       width = o.width,
-                                       height = o.height,
+        def type_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.shape_type == target.shape_type
 
-                                       is_assigned_to_template = False,
-                                       object = o) for o in objects])
+        recognizer.add_validator(type_match)
+        recognizer.add_validator(exact_size_match)
 
+        return recognizer
 
-        # shape type needs to be exact same
-        types = df["shape_type"].unique().tolist()
-        for shape_type in types:
-            _df = df[df["shape_type"] == shape_type]
+    @staticmethod
+    def get_dice_recognizer(dice_threshold: float = 1.0) -> 'ObjectRecognizer':
+        recognizer = ObjectRecognizer()
 
-            print(_df)
+        def exact_size_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.dice_coefficient(target) >= dice_threshold
+
+        def type_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.shape_type == target.shape_type
+
+        recognizer.add_validator(type_match)
+        recognizer.add_validator(exact_size_match)
+
+        return recognizer
+
+    @staticmethod
+    def get_size_with_dice_recognizer(size_threshold: float = 1.0,dice_threshold: float = 1.0) -> 'ObjectRecognizer':
+        recognizer = ObjectRecognizer()
+
+        def exact_size_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.size_match_score(target) >= size_threshold
+
+        def dice_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.dice_coefficient(target) >= dice_threshold
+
+        def type_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.shape_type == target.shape_type
+
+        recognizer.add_validator(type_match)
+        recognizer.add_validator(exact_size_match)
+        recognizer.add_validator(dice_match)
+
+        return recognizer
+
+    @staticmethod
+    def get_exact_recognizer() -> 'ObjectRecognizer':
+        recognizer = ObjectRecognizer()
+
+        def exact_size_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.size_match_score(target) == 1.0
+
+        def dice_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.dice_coefficient(target) == 1.0
+
+        def type_match(ref: SnappableObject, target: SnappableObject) -> bool:
+            return ref.shape_type == target.shape_type
+
+        recognizer.add_validator(type_match)
+        recognizer.add_validator(exact_size_match)
+        recognizer.add_validator(dice_match)
+
+        return recognizer

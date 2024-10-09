@@ -9,8 +9,8 @@ from .pptx_reader import PPTXReader
 from .grid import Grid
 from .snappable_object import SnappableObject
 from .slide import Slide
-from .object_recognizer import ObjectTemplates
-
+from .templates import ObjectTemplates
+from .utils import AnchorPoint
 
 class SnapCandidate:
     """
@@ -18,13 +18,13 @@ class SnapCandidate:
     A SnapCandidate is a virtual, grid-sanpped position of an objects anchor point
     """
 
-    def __init__(self, snappable_object: SnappableObject, anchor_name: str, snap_type:str, grid_type:str, snap_x_position: Optional[int] = None, snap_y_position: Optional[int] = None):
+    def __init__(self, snappable_object: SnappableObject, anchor_point: AnchorPoint, snap_type:str, grid_type:str, snap_x_position: Optional[int] = None, snap_y_position: Optional[int] = None):
         self.snappable_object = snappable_object
-        self.anchor_name = anchor_name      # Name of the anchor point (e.g., "top-left")
+        self.anchor_point = anchor_point      # Name of the anchor point (e.g., "top-left")
         self.snap_type = snap_type
         self.grid_type = grid_type
         
-        self.anchor_position = snappable_object.get_anchor_point(anchor_name)
+        self.anchor_position = snappable_object.get_anchor_point(anchor_point)
         
         x = snap_x_position if not isinstance(snap_x_position,type(None)) else self.anchor_position[0]
         y = snap_y_position if not isinstance(snap_y_position,type(None)) else self.anchor_position[1]
@@ -32,7 +32,7 @@ class SnapCandidate:
         self.snap_position = (x,y)    # New snapped position (x, y)
 
     def __str__(self) -> str:
-        return (f"{self.anchor_name} anchor at {self.anchor_position} "
+        return (f"{self.anchor_point.value} anchor at {self.anchor_position} "
                 f"snapped to {self.snap_position}")
         
     @property
@@ -73,11 +73,11 @@ class XSnapping(Snapping):
 
     def snap(self, obj: SnappableObject, grid_type:str):
         """Apply x-axis snapping to the object."""
-        for anchor_name in obj.anchor_points.keys():
+        for anchor_point in obj.active_anchor_points:
             if len(self.grid.x_grid_lines)==0:
                 break
-            closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_name)[0]))
-            obj.snapping_candidates.append(SnapCandidate(obj, anchor_name, snap_x_position=closest_x,
+            closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_point)[0]))
+            obj.snapping_candidates.append(SnapCandidate(obj, anchor_point = anchor_point, snap_x_position=closest_x,
                                                          snap_type = self.snap_type,
                                                          grid_type=grid_type))
 
@@ -93,11 +93,11 @@ class YSnapping(Snapping):
 
     def snap(self, obj: SnappableObject, grid_type:str) -> None:
         """Apply y-axis snapping to the object."""
-        for anchor_name in obj.anchor_points.keys():
+        for anchor_point in obj.active_anchor_points:
             if len(self.grid.y_grid_lines)==0:
                 break
-            closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_name)[1]))
-            obj.snapping_candidates.append(SnapCandidate(obj, anchor_name, snap_y_position=closest_y,
+            closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_point)[1]))
+            obj.snapping_candidates.append(SnapCandidate(obj, anchor_point=anchor_point, snap_y_position=closest_y,
                                                          snap_type = self.snap_type,
                                                          grid_type=grid_type))
 
@@ -113,18 +113,18 @@ class JointSnapping(Snapping):
 
     def snap(self, obj: SnappableObject, grid_type:str) -> None:
         """Apply simultaneous x and y snapping to the object."""
-        for anchor_name in obj.anchor_points.keys():
+        for anchor_point in obj.active_anchor_points:
             if len(self.grid.x_grid_lines) != 0:
-                closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_name)[0]))
+                closest_x = min(self.grid.x_grid_lines, key=lambda gx: abs(gx - obj.get_anchor_point(anchor_point)[0]))
             else:
-                closest_x = obj.get_anchor_point(anchor_name)[0]
+                closest_x = obj.get_anchor_point(anchor_point)[0]
 
             if len(self.grid.y_grid_lines) != 0:
-                closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_name)[1]))
+                closest_y = min(self.grid.y_grid_lines, key=lambda gy: abs(gy - obj.get_anchor_point(anchor_point)[1]))
             else:
-                closest_y = obj.get_anchor_point(anchor_name)[1]
+                closest_y = obj.get_anchor_point(anchor_point)[1]
 
-            obj.snapping_candidates.append(SnapCandidate(obj, anchor_name, snap_x_position=closest_x, snap_y_position=closest_y,
+            obj.snapping_candidates.append(SnapCandidate(obj, anchor_point=anchor_point, snap_x_position=closest_x, snap_y_position=closest_y,
                                                          snap_type = self.snap_type,
                                                          grid_type=grid_type))
         
@@ -144,7 +144,8 @@ class SnappingSearch:
         self.joint_grid = None
         
         self.snapping_strategies = {}
-        
+
+
         
     def _update_strategies(self)-> None:
         self.snapping_strategies = {}

@@ -4,6 +4,7 @@ from sklearn.cluster import KMeans
 import numpy as np
 from .grid import Grid
 from .slide import Slide
+from .utils import AnchorPoint
 
 class KMeansGrid(Grid):
     def __init__(self, slide: Slide, x_depth = -1, y_depth = -1):
@@ -11,12 +12,13 @@ class KMeansGrid(Grid):
         super().__init__(slide_width=slide.slide_width, slide_height=slide.slide_height, x_depth=x_depth, y_depth=y_depth)
         self.slide = slide
 
-    def calculate_kmeans_grid(self, anchor_name = "center", axis: str = 'both', n_clusters: Optional[int] = None) -> Grid:
+    def calculate_kmeans_grid(self, anchor_point:AnchorPoint = AnchorPoint.CENTER,
+                              axis: str = 'both', n_clusters: Optional[int] = None) -> Grid:
         """
         Convert the clustered positions into a grid using K-means.
         
         Args:
-            anchor_name: name of the anchor point
+            anchor_point: AnchorPoint
             axis: 'x', 'y', or 'both'. Determines the axis along which clustering is performed.
             n_clusters: Number of clusters (K) for the K-means algorithm. 
                         If None, the number of clusters is optimized based on the number of objects.
@@ -25,7 +27,7 @@ class KMeansGrid(Grid):
             A new Grid instance based on the K-means cluster centers.
         """
         # Get the positions of all snappable objects in the slide
-        positions = np.array([obj.get_anchor_point(anchor_name=anchor_name) for obj in self.slide.snappable_objects])
+        positions = np.array([obj.get_anchor_point(anchor_point) for obj in self.slide.snappable_objects])
 
         # skip if there is only one element...
         if positions.shape[1] == 1:
