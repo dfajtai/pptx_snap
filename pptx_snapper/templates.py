@@ -77,7 +77,17 @@ class ObjectTemplates:
         return template
 
     @staticmethod
-    def search_templates(list_of_objects: Iterable[SnappableObject] | None, object_recognizer: ObjectRecognizer):
+    def recognize_templates(list_of_objects: Iterable[SnappableObject] | None,
+                            object_recognizer: ObjectRecognizer,
+                            min_num_of_re_occurrences:int = 2):
+        """
+        Method to automatically recognize repeated object (with the same type, and some criteria)
+        :param list_of_objects: List of SnappableObjects or None. If None, all initialized SanppableObjects will be used.
+        :param object_recognizer: ObjectRecognizer that validates object similarity
+        :param min_num_of_re_occurrences: Minimal number of re-occurrence.
+        :return:
+        """
+
         if not list_of_objects:
             list_of_objects = SnappableObject.catalog
 
@@ -116,14 +126,18 @@ class ObjectTemplates:
                     break
                 target_objects = _target_objects["object_reference"].tolist()
 
-                matching_objects = object_recognizer.search_similar_objects(pivot_object,target_objects)
+                matching_objects = object_recognizer.search_similar_objects(pivot_object, target_objects)
 
                 if len(matching_objects) > 0:
                     matching_object_ids = [mo.full_id for mo in matching_objects]
-                    _df.loc[_df["id"].isin(matching_object_ids),"is_assigned_to_template"] = True
-                    _df.loc[pivot_index,"is_assigned_to_template"] = True
 
-                    template_candidates.append([pivot_object] + matching_objects)
+                    if len(matching_objects) > min_num_of_re_occurrences:
+                        _df.loc[_df["id"].isin(matching_object_ids),"is_assigned_to_template"] = True
+                        _df.loc[pivot_index,"is_assigned_to_template"] = True
+                        template_candidates.append([pivot_object] + matching_objects)
+                    else:
+                        _df.loc[_df["id"].isin(matching_object_ids), "is_touched"] = True
+
 
                 _df.loc[pivot_index,"is_touched"] = True
 

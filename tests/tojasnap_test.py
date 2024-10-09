@@ -58,7 +58,7 @@ def test_2():
     pptx_reader = PPTXReader('../examples/KepalkotasTojasnap2024_v241002.pptx')
 
     recognizer = ObjectRecognizer.get_size_with_dice_recognizer(1.0,0.8)
-    ObjectTemplates.search_templates(SnappableObject.catalog,recognizer)
+    ObjectTemplates.recognize_templates(SnappableObject.catalog, recognizer)
 
 
 if __name__ == "__main__":
